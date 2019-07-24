@@ -18,7 +18,8 @@
 package v1
 
 // swagger:strfmt binary
-type Bytes = []byte
+type bytes = []byte // note that we need to make this its own object to get the strfmt annotation to work properly. Otherwise swagger generates []uint8 instead of type binary
+// ^ one day we should probably fork swagger, to avoid this workaround.
 
 // NodeStatus contains the information about a node status
 // swagger:model NodeStatus
@@ -149,7 +150,7 @@ type Transaction struct {
 	// Note is a free form data
 	//
 	// required: false
-	Note Bytes `json:"noteb64,omitempty"`
+	Note bytes `json:"noteb64,omitempty"`
 
 	// ConfirmedRound indicates the block number this transaction appeared in
 	//
@@ -183,7 +184,7 @@ type Transaction struct {
 	// Genesis hash
 	//
 	// required: true
-	GenesisHash Bytes `json:"genesishashb64"`
+	GenesisHash bytes `json:"genesishashb64"`
 }
 
 // PaymentTransactionType contains the additional fields for a payment Transaction
@@ -263,7 +264,7 @@ type TransactionParams struct {
 	// Genesis hash
 	//
 	// required: true
-	GenesisHash Bytes `json:"genesishashb64"`
+	GenesisHash bytes `json:"genesishashb64"`
 
 	// LastRound indicates the last round seen
 	//
