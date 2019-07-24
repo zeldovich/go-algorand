@@ -215,8 +215,7 @@ node_exporter: $(GOPATH)/bin/node_exporter
 # The file is was taken from the S3 cloud and it traditionally stored at
 # /travis-build-artifacts-us-ea-1.algorand.network/algorand/node_exporter/latest/node_exporter-stable-linux-x86_64.tar.gz
 $(GOPATH)/bin/node_exporter:
-	cd $(GOPATH)/bin && \
-		tar -xzvf installer/external/node_exporter-stable-$(shell ./scripts/ostype.sh)-$(shell uname -m | tr '[:upper:]' '[:lower:]').tar.gz
+	tar -xzvf installer/external/node_exporter-stable-$(shell ./scripts/ostype.sh)-$(shell uname -m | tr '[:upper:]' '[:lower:]').tar.gz -C $(GOPATH)/bin
 
 # deploy
 
