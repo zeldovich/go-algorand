@@ -36,7 +36,7 @@ default: build
 # tools
 
 fmt:
-	go fmt `go list ./... | grep -v /vendor/`
+	go fmt ./...
 
 fix: build
 	$(GOPATH)/bin/algofix `ls -d */ | grep -vw vendor`
@@ -45,13 +45,13 @@ fixcheck: build
 	$(GOPATH)/bin/algofix -error `ls -d */ | grep -vw vendor`
 
 lint: deps
-	$(GOPATH)/bin/golint `go list ./... | grep -v /vendor/`
+	$(GOPATH)/bin/golint `go list ./...`
 
 vend:
 	$(GOPATH)/bin/vend
 
 vet:
-	go vet `go list ./... | grep -v /vendor/`
+	go vet ./...
 
 sanity: vet fix lint fmt
 
@@ -62,8 +62,7 @@ prof:
 	cd node && go test $(GOTAGS) -cpuprofile=cpu.out -memprofile=mem.out -mutexprofile=mutex.out
 
 generate: deps
-	PATH=$(GOPATH)/bin:$$PATH \
-		go generate `go list ./... | grep -v /vendor/`
+	PATH=$(GOPATH)/bin:$$PATH go generate ./...
 
 # build our fork of libsodium, placing artifacts into crypto/lib/ and crypto/include/
 crypto/lib/libsodium.a:
