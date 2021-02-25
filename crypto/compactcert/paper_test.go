@@ -19,6 +19,7 @@ package compactcert
 import (
 	"encoding/csv"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"testing"
@@ -99,7 +100,36 @@ func TestPaperCertSizeBreakdown(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func paperCertSize(t *testing.T, totalWeight int, npart int, provenWeight int, signedWeight int) (int, int) {
+func paperCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) (int, int) {
+	mul := 1.0 - math.Pow(0.1, float64(mulpower))
+	if mulpower == 0 { // Special case, not continuous..
+		mul = 1.0
+	}
+
+	partWeights := make([]uint64, npart)
+	partWeights[0] = 1 << 44
+	totalWeight := partWeights[0]
+	for i := 1; i < npart; i++ {
+		partWeights[i] = uint64(float64(partWeights[i-1]) * mul)
+		if partWeights[i] == 0 {
+			partWeights[i] = 1
+		}
+
+		if totalWeight+partWeights[i] < totalWeight {
+			t.Error("weight overflow")
+		}
+
+		totalWeight += partWeights[i]
+	}
+
+	// fmt.Printf("mul: %f (1-10^-%d)\n", mul, mulpower)
+	// fmt.Printf("  total weight %d\n", totalWeight)
+	// fmt.Printf("highest weight %d\n", partWeights[0])
+	// fmt.Printf(" lowest weight %d\n", partWeights[npart-1])
+
+	provenWeight := totalWeight / 100 * uint64(provenWeightPct)
+	signedWeight := totalWeight / 100 * uint64(signedWeightPct)
+
 	param := Params{
 		Msg:          TestMessage("hello world"),
 		ProvenWeight: uint64(provenWeight),
@@ -115,7 +145,7 @@ func paperCertSize(t *testing.T, totalWeight int, npart int, provenWeight int, s
 	for i := 0; i < npart; i++ {
 		part := Participant{
 			PK:     key.SignatureVerifier,
-			Weight: uint64(totalWeight / npart),
+			Weight: partWeights[i],
 		}
 
 		parts = append(parts, part)
@@ -134,11 +164,12 @@ func paperCertSize(t *testing.T, totalWeight int, npart int, provenWeight int, s
 	b, err := MkBuilder(param, parts, partcom)
 	require.NoError(t, err)
 
-	var sigWeight int
+	// XXX for skew, this takes the highest signers first
+	var sigWeight uint64
 	for i := 0; i < npart && sigWeight < signedWeight; i++ {
 		err = b.Add(uint64(i), sigs[i], false)
 		require.NoError(t, err)
-		sigWeight += int(parts[i].Weight)
+		sigWeight += parts[i].Weight
 	}
 
 	cert, err := b.Build()
@@ -156,35 +187,63 @@ func median(elems []int) int {
 	return elems[len(elems)/2]
 }
 
-func medianCertSize(t *testing.T, totalWeight int, npart int, provenWeight int, signedWeight int) (int, int) {
+func medianCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) (int, int) {
 	var nr int
 	var sizes []int
 	for i := 0; i < 3; i++ {
 		var sz int
-		sz, nr = paperCertSize(t, totalWeight, npart, provenWeight, signedWeight)
+		sz, nr = paperCertSize(t, npart, provenWeightPct, signedWeightPct, mulpower)
 		sizes = append(sizes, sz)
 	}
 	return median(sizes), nr
 }
 
-// Generate certsize.csv
 func TestPaperCertSizes(t *testing.T) {
-	csv := csv.NewWriter(os.Stdout)
+	f, err := os.Create("certsize.csv")
+	require.NoError(t, err)
+	defer f.Close()
 
-	totalWeight := 10 * 1000 * 1000
+	csv := csv.NewWriter(f)
+	defer csv.Flush()
+
 	npart := 1000 * 1000
-	provenWeight := 5 * 1000 * 1000
+	provenWeightPct := 50
+	mulpower := 0
 
-	csv.Write([]string{"signedWeight", "certBytes", "certReveals"})
+	csv.Write([]string{"signedWeight", "skew", "certBytes", "certReveals"})
 
 	for sigpct := 55; sigpct <= 100; sigpct += 5 {
-		sz, nr := medianCertSize(t, totalWeight, npart, provenWeight, totalWeight / 100 * sigpct)
+		sz, nr := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
 		csv.Write([]string{
 			fmt.Sprintf("%d", sigpct),
+			fmt.Sprintf("%d", mulpower),
 			fmt.Sprintf("%d", sz),
 			fmt.Sprintf("%d", nr),
 		})
 	}
+}
 
-	csv.Flush()
+func TestPaperCertSizeSkew(t *testing.T) {
+	f, err := os.Create("certskew.csv")
+	require.NoError(t, err)
+	defer f.Close()
+
+	csv := csv.NewWriter(f)
+	defer csv.Flush()
+
+	npart := 1000 * 1000
+	provenWeightPct := 50
+	sigpct := 100
+
+	csv.Write([]string{"signedWeight", "skew", "certBytes", "certReveals"})
+
+	for mulpower := 1; mulpower < 10; mulpower++ {
+		sz, nr := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
+		csv.Write([]string{
+			fmt.Sprintf("%d", sigpct),
+			fmt.Sprintf("%d", mulpower),
+			fmt.Sprintf("%d", sz),
+			fmt.Sprintf("%d", nr),
+		})
+	}
 }
