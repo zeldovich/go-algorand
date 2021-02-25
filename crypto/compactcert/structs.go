@@ -26,7 +26,6 @@ import (
 type Params struct {
 	Msg          crypto.Hashable // Message to be cerified
 	ProvenWeight uint64          // Weight threshold proven by the certificate
-	SigRound     basics.Round    // Ephemeral signature round to expect
 	SecKQ        uint64          // Security parameter (k+q) from analysis document
 }
 
@@ -43,14 +42,10 @@ type Participant struct {
 	_struct struct{} `codec:",omitempty,omitemptyarray"`
 
 	// PK is AccountData.VoteID.
-	PK crypto.OneTimeSignatureVerifier `codec:"p"`
+	PK crypto.PublicKey `codec:"p"`
 
 	// Weight is AccountData.MicroAlgos.
 	Weight uint64 `codec:"w"`
-
-	// KeyDilution is AccountData.KeyDilution() with the protocol for sigRound
-	// as expected by the Builder.
-	KeyDilution uint64 `codec:"d"`
 }
 
 // ToBeHashed implements the crypto.Hashable interface.
@@ -58,18 +53,12 @@ func (p Participant) ToBeHashed() (protocol.HashID, []byte) {
 	return protocol.CompactCertPart, protocol.Encode(&p)
 }
 
-// CompactOneTimeSignature is crypto.OneTimeSignature with omitempty
-type CompactOneTimeSignature struct {
-	_struct struct{} `codec:",omitempty,omitemptyarray"`
-	crypto.OneTimeSignature
-}
-
 // A sigslotCommit is a single slot in the sigs array that forms the certificate.
 type sigslotCommit struct {
 	_struct struct{} `codec:",omitempty,omitemptyarray"`
 
 	// Sig is a signature by the participant on the expected message.
-	Sig CompactOneTimeSignature `codec:"s"`
+	Sig crypto.Signature `codec:"s"`
 
 	// L is the total weight of signatures in lower-numbered slots.
 	// This is initialized once the builder has collected a sufficient

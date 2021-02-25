@@ -21,7 +21,6 @@ import (
 
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/algorand/go-algorand/crypto/merklearray"
-	"github.com/algorand/go-algorand/data/basics"
 )
 
 // Verifier is used to verify a compact certificate.
@@ -55,8 +54,7 @@ func (v *Verifier) Verify(c *Cert) error {
 		sigs[pos] = crypto.HashObj(r.SigSlot)
 		parts[pos] = crypto.HashObj(r.Part)
 
-		ephID := basics.OneTimeIDForRound(v.SigRound, r.Part.KeyDilution)
-		if !r.Part.PK.Verify(ephID, v.Msg, r.SigSlot.Sig.OneTimeSignature) {
+		if !r.Part.PK.Verify(v.Msg, r.SigSlot.Sig) {
 			return fmt.Errorf("signature in reveal pos %d does not verify", pos)
 		}
 	}

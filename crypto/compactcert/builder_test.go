@@ -22,7 +22,6 @@ import (
 
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/algorand/go-algorand/crypto/merklearray"
-	"github.com/algorand/go-algorand/data/basics"
 	"github.com/algorand/go-algorand/protocol"
 
 	"github.com/stretchr/testify/require"
@@ -68,20 +67,19 @@ func TestBuildVerify(t *testing.T) {
 	param := Params{
 		Msg:          TestMessage("hello world"),
 		ProvenWeight: uint64(totalWeight / 2),
-		SigRound:     0,
 		SecKQ:        128,
 	}
 
 	// Share the key; we allow the same vote key to appear in multiple accounts..
-	key := crypto.GenerateOneTimeSignatureSecrets(0, 1)
+	var seed crypto.Seed
+	key := crypto.GenerateSignatureSecrets(seed)
 
 	var parts []Participant
-	var sigs []crypto.OneTimeSignature
+	var sigs []crypto.Signature
 	for i := 0; i < npartHi; i++ {
 		part := Participant{
-			PK:          key.OneTimeSignatureVerifier,
-			Weight:      uint64(totalWeight / 2 / npartHi),
-			KeyDilution: 10000,
+			PK:     key.SignatureVerifier,
+			Weight: uint64(totalWeight / 2 / npartHi),
 		}
 
 		parts = append(parts, part)
@@ -89,16 +87,14 @@ func TestBuildVerify(t *testing.T) {
 
 	for i := 0; i < npartLo; i++ {
 		part := Participant{
-			PK:          key.OneTimeSignatureVerifier,
-			Weight:      uint64(totalWeight / 2 / npartLo),
-			KeyDilution: 10000,
+			PK:     key.SignatureVerifier,
+			Weight: uint64(totalWeight / 2 / npartLo),
 		}
 
 		parts = append(parts, part)
 	}
 
-	ephID := basics.OneTimeIDForRound(0, parts[0].KeyDilution)
-	sig := key.Sign(ephID, param.Msg)
+	sig := key.Sign(param.Msg)
 
 	for i := 0; i < npart; i++ {
 		sigs = append(sigs, sig)
@@ -158,28 +154,36 @@ func BenchmarkBuildVerify(b *testing.B) {
 	param := Params{
 		Msg:          TestMessage("hello world"),
 		ProvenWeight: uint64(totalWeight / 2),
-		SigRound:     0,
 		SecKQ:        128,
 	}
 
 	var parts []Participant
-	var partkeys []*crypto.OneTimeSignatureSecrets
-	var sigs []crypto.OneTimeSignature
-	for i := 0; i < npart; i++ {
-		key := crypto.GenerateOneTimeSignatureSecrets(0, 1)
-		part := Participant{
-			PK:          key.OneTimeSignatureVerifier,
-			Weight:      uint64(totalWeight / npart),
-			KeyDilution: 10000,
+	var partkeys []*crypto.SignatureSecrets
+	var sigs []crypto.Signature
+
+	var seed crypto.Seed
+	key := crypto.GenerateSignatureSecrets(seed)
+	sig := key.Sign(param.Msg)
+	reallySignAndVerify := false
+
+	b.Run("Sign", func(b *testing.B) {
+		for j := 0; j < b.N; j++ {
+			for i := 0; i < npart; i++ {
+				part := Participant{
+					PK:     key.SignatureVerifier,
+					Weight: uint64(totalWeight / npart),
+				}
+
+				if reallySignAndVerify {
+					sig = key.Sign(param.Msg)
+				}
+
+				partkeys = append(partkeys, key)
+				sigs = append(sigs, sig)
+				parts = append(parts, part)
+			}
 		}
-
-		ephID := basics.OneTimeIDForRound(0, part.KeyDilution)
-		sig := key.Sign(ephID, param.Msg)
-
-		partkeys = append(partkeys, key)
-		sigs = append(sigs, sig)
-		parts = append(parts, part)
-	}
+	})
 
 	var cert *Cert
 	partcom, err := merklearray.Build(PartCommit{parts})
@@ -195,7 +199,7 @@ func BenchmarkBuildVerify(b *testing.B) {
 			}
 
 			for i := 0; i < npart; i++ {
-				err = builder.Add(uint64(i), sigs[i], true)
+				err = builder.Add(uint64(i), sigs[i], reallySignAndVerify)
 				if err != nil {
 					b.Error(err)
 				}

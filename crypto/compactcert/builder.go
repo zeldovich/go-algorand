@@ -21,7 +21,6 @@ import (
 
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/algorand/go-algorand/crypto/merklearray"
-	"github.com/algorand/go-algorand/data/basics"
 )
 
 //msgp:ignore sigslot
@@ -81,7 +80,7 @@ func (b *Builder) Present(pos uint64) bool {
 // Add a signature to the set of signatures available for building a certificate.
 // verifySig should be set to true in production; setting it to false is useful
 // for benchmarking to avoid the cost of signature checks.
-func (b *Builder) Add(pos uint64, sig crypto.OneTimeSignature, verifySig bool) error {
+func (b *Builder) Add(pos uint64, sig crypto.Signature, verifySig bool) error {
 	if b.Present(pos) {
 		return fmt.Errorf("position %d already added", pos)
 	}
@@ -98,14 +97,13 @@ func (b *Builder) Add(pos uint64, sig crypto.OneTimeSignature, verifySig bool) e
 	}
 
 	// Check signature
-	ephID := basics.OneTimeIDForRound(b.SigRound, p.KeyDilution)
-	if verifySig && !p.PK.Verify(ephID, b.Msg, sig) {
-		return fmt.Errorf("signature does not verify under ID %v", ephID)
+	if verifySig && !p.PK.Verify(b.Msg, sig) {
+		return fmt.Errorf("signature does not verify")
 	}
 
 	// Remember the signature
 	b.sigs[pos].Weight = p.Weight
-	b.sigs[pos].Sig.OneTimeSignature = sig
+	b.sigs[pos].Sig = sig
 	b.signedWeight += p.Weight
 	b.cert = nil
 	b.sigsHasValidL = false
