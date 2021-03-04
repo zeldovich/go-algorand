@@ -23,6 +23,7 @@ import (
 	"os"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/algorand/go-algorand/crypto"
 	"github.com/algorand/go-algorand/crypto/merklearray"
@@ -182,20 +183,122 @@ func paperCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct
 	return len(protocol.Encode(cert)), len(cert.Reveals)
 }
 
+func paperVerifyTime(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) time.Duration {
+	mul := 1.0 - math.Pow(0.1, float64(mulpower))
+	if mulpower == 0 { // Special case, not continuous..
+		mul = 1.0
+	}
+
+	partWeights := make([]uint64, npart)
+	partWeights[0] = 1 << 44
+	totalWeight := partWeights[0]
+	for i := 1; i < npart; i++ {
+		partWeights[i] = uint64(float64(partWeights[i-1]) * mul)
+		if partWeights[i] == 0 {
+			partWeights[i] = 1
+		}
+
+		if totalWeight+partWeights[i] < totalWeight {
+			t.Error("weight overflow")
+		}
+
+		totalWeight += partWeights[i]
+	}
+
+	// fmt.Printf("mul: %f (1-10^-%d)\n", mul, mulpower)
+	// fmt.Printf("  total weight %d\n", totalWeight)
+	// fmt.Printf("highest weight %d\n", partWeights[0])
+	// fmt.Printf(" lowest weight %d\n", partWeights[npart-1])
+
+	provenWeight := totalWeight / 100 * uint64(provenWeightPct)
+	signedWeight := totalWeight / 100 * uint64(signedWeightPct)
+
+	param := Params{
+		Msg:          TestMessage("hello world"),
+		ProvenWeight: uint64(provenWeight),
+		SecKQ:        128,
+	}
+
+	// Share the key; we allow the same vote key to appear in multiple accounts..
+	var seed crypto.Seed
+	crypto.RandBytes(seed[:])
+	key := crypto.GenerateSignatureSecrets(seed)
+
+	var parts []Participant
+	for i := 0; i < npart; i++ {
+		part := Participant{
+			PK:     key.SignatureVerifier,
+			Weight: partWeights[i],
+		}
+
+		parts = append(parts, part)
+	}
+
+	sig := key.Sign(param.Msg)
+
+	var sigs []crypto.Signature
+	for i := 0; i < npart; i++ {
+		sigs = append(sigs, sig)
+	}
+
+	partcom, err := merklearray.Build(PartCommit{parts})
+	require.NoError(t, err)
+
+	b, err := MkBuilder(param, parts, partcom)
+	require.NoError(t, err)
+
+	// XXX for skew, this takes the highest signers first
+	var sigWeight uint64
+	for i := 0; i < npart && sigWeight < signedWeight; i++ {
+		err = b.Add(uint64(i), sigs[i], false)
+		require.NoError(t, err)
+		sigWeight += parts[i].Weight
+	}
+
+	cert, err := b.Build()
+	require.NoError(t, err)
+
+	verif := MkVerifier(param, partcom.Root())
+
+	t0 := time.Now()
+	niter := 10
+	for i := 0; i < niter; i++ {
+		err = verif.Verify(cert)
+		require.NoError(t, err)
+	}
+	t1 := time.Now()
+
+	return t1.Sub(t0)/time.Duration(niter)
+}
+
 func median(elems []int) int {
 	sort.Ints(elems)
 	return elems[len(elems)/2]
 }
 
+func medianDuration(elems []time.Duration) time.Duration {
+	sort.Slice(elems, func(i, j int) bool { return elems[i] < elems[j] })
+	return elems[len(elems)/2]
+}
+
 func medianCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) (int, int) {
-	var nr int
+	var reveals []int
 	var sizes []int
 	for i := 0; i < 3; i++ {
-		var sz int
-		sz, nr = paperCertSize(t, npart, provenWeightPct, signedWeightPct, mulpower)
+		sz, nr := paperCertSize(t, npart, provenWeightPct, signedWeightPct, mulpower)
 		sizes = append(sizes, sz)
+		reveals = append(reveals, nr)
 	}
-	return median(sizes), nr
+	return median(sizes), median(reveals)
+}
+
+func medianVerifyTime(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) time.Duration {
+	var times []time.Duration
+	for i := 0; i < 3; i++ {
+		t := paperVerifyTime(t, npart, provenWeightPct, signedWeightPct, mulpower)
+		times = append(times, t)
+	}
+	return medianDuration(times)
 }
 
 func TestPaperCertSizes(t *testing.T) {
@@ -244,6 +347,29 @@ func TestPaperCertSizeSkew(t *testing.T) {
 			fmt.Sprintf("%d", mulpower),
 			fmt.Sprintf("%d", sz),
 			fmt.Sprintf("%d", nr),
+		})
+	}
+}
+
+func TestPaperVerifyTime(t *testing.T) {
+	f, err := os.Create("verifytime.csv")
+	require.NoError(t, err)
+	defer f.Close()
+
+	csv := csv.NewWriter(f)
+	defer csv.Flush()
+
+	npart := 1000 * 1000
+	provenWeightPct := 50
+	mulpower := 0
+
+	csv.Write([]string{"signedWeight", "verifyTime"})
+
+	for sigpct := 55; sigpct <= 100; sigpct += 5 {
+		t := medianVerifyTime(t, npart, provenWeightPct, sigpct, mulpower)
+		csv.Write([]string{
+			fmt.Sprintf("%d", sigpct),
+			fmt.Sprintf("%d", t.Nanoseconds()),
 		})
 	}
 }
