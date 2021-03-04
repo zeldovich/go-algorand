@@ -51,8 +51,8 @@ func (v *Verifier) Verify(c *Cert) error {
 	sigs := make(map[uint64]crypto.Digest)
 	parts := make(map[uint64]crypto.Digest)
 	for pos, r := range c.Reveals {
-		sigs[pos] = crypto.HashObj(r.SigSlot)
-		parts[pos] = crypto.HashObj(r.Part)
+		sigs[pos] = r.SigSlot.Hash()
+		parts[pos] = r.Part.Hash()
 
 		if !r.Part.PK.Verify(v.Msg, r.SigSlot.Sig) {
 			return fmt.Errorf("signature in reveal pos %d does not verify", pos)

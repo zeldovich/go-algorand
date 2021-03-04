@@ -42,6 +42,12 @@ func (cc coinChoice) ToBeHashed() (protocol.HashID, []byte) {
 	return protocol.CompactCertCoin, protocol.Encode(&cc)
 }
 
+func (cc coinChoice) Hash() crypto.Digest {
+	enc := cc.MarshalMsg(append(protocol.GetEncodingBuf(), []byte(protocol.CompactCertCoin)...))
+	defer protocol.PutEncodingBuf(enc)
+	return crypto.Hash(enc)
+}
+
 // hashCoin returns a number in [0, choice.SignedWeight) with a nearly uniform
 // distribution, "randomized" by all of the fields in choice.
 func hashCoin(choice coinChoice) uint64 {

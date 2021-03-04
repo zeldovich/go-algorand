@@ -53,6 +53,12 @@ func (p Participant) ToBeHashed() (protocol.HashID, []byte) {
 	return protocol.CompactCertPart, protocol.Encode(&p)
 }
 
+func (p Participant) Hash() crypto.Digest {
+	enc := p.MarshalMsg(append(protocol.GetEncodingBuf(), []byte(protocol.CompactCertPart)...))
+	defer protocol.PutEncodingBuf(enc)
+	return crypto.Hash(enc)
+}
+
 // A sigslotCommit is a single slot in the sigs array that forms the certificate.
 type sigslotCommit struct {
 	_struct struct{} `codec:",omitempty,omitemptyarray"`
@@ -68,6 +74,12 @@ type sigslotCommit struct {
 
 func (ssc sigslotCommit) ToBeHashed() (protocol.HashID, []byte) {
 	return protocol.CompactCertSig, protocol.Encode(&ssc)
+}
+
+func (ssc sigslotCommit) Hash() crypto.Digest {
+	enc := ssc.MarshalMsg(append(protocol.GetEncodingBuf(), []byte(protocol.CompactCertSig)...))
+	defer protocol.PutEncodingBuf(enc)
+	return crypto.Hash(enc)
 }
 
 // Reveal is a single array position revealed as part of a compact

@@ -19,6 +19,8 @@ package compactcert
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/algorand/go-algorand/crypto"
 )
 
@@ -123,4 +125,15 @@ func BenchmarkNumReveals(b *testing.B) {
 			b.Error(err)
 		}
 	}
+}
+
+func TestCoinChoiceHash(t *testing.T) {
+	var cc coinChoice
+	crypto.RandBytes(cc.Sigcom[:])
+	crypto.RandBytes(cc.Partcom[:])
+	crypto.RandBytes(cc.MsgHash[:])
+	cc.J = crypto.RandUint64()
+	cc.SignedWeight = crypto.RandUint64()
+	cc.ProvenWeight = crypto.RandUint64()
+	require.Equal(t, crypto.HashObj(&cc), cc.Hash())
 }

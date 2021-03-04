@@ -268,7 +268,7 @@ func paperVerifyTime(t *testing.T, npart int, provenWeightPct int, signedWeightP
 	}
 	t1 := time.Now()
 
-	return t1.Sub(t0)/time.Duration(niter)
+	return t1.Sub(t0) / time.Duration(niter)
 }
 
 func median(elems []int) int {

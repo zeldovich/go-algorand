@@ -132,7 +132,7 @@ func (sc sigsToCommit) GetHash(pos uint64) (crypto.Digest, error) {
 		return crypto.Digest{}, fmt.Errorf("pos %d past end %d", pos, len(sc))
 	}
 
-	return crypto.HashObj(&sc[pos].sigslotCommit), nil
+	return sc[pos].sigslotCommit.Hash(), nil
 }
 
 // coinIndex returns the position pos in the sigs array such that the sum
