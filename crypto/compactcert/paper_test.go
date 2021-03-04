@@ -373,3 +373,86 @@ func TestPaperVerifyTime(t *testing.T) {
 		})
 	}
 }
+
+func TestPaperFlow(t *testing.T) {
+	mul := 1.0
+	npart := 1000000
+	provenWeightPct := 50
+	signedWeightPct := 100
+
+	partWeights := make([]uint64, npart)
+	partWeights[0] = 1 << 44
+	totalWeight := partWeights[0]
+	for i := 1; i < npart; i++ {
+		partWeights[i] = uint64(float64(partWeights[i-1]) * mul)
+		if partWeights[i] == 0 {
+			partWeights[i] = 1
+		}
+
+		if totalWeight+partWeights[i] < totalWeight {
+			t.Error("weight overflow")
+		}
+
+		totalWeight += partWeights[i]
+	}
+
+	provenWeight := totalWeight / 100 * uint64(provenWeightPct)
+	signedWeight := totalWeight / 100 * uint64(signedWeightPct)
+
+	param := Params{
+		Msg:          TestMessage("hello world"),
+		ProvenWeight: uint64(provenWeight),
+		SecKQ:        128,
+	}
+
+	// Share the key; we allow the same vote key to appear in multiple accounts..
+	var seed crypto.Seed
+	crypto.RandBytes(seed[:])
+	key := crypto.GenerateSignatureSecrets(seed)
+
+	var parts []Participant
+	for i := 0; i < npart; i++ {
+		part := Participant{
+			PK:     key.SignatureVerifier,
+			Weight: partWeights[i],
+		}
+
+		parts = append(parts, part)
+	}
+
+	var sigs []crypto.Signature
+	t0 := time.Now()
+	for i := 0; i < npart; i++ {
+		sig := key.Sign(param.Msg)
+		sigs = append(sigs, sig)
+	}
+	t1 := time.Now()
+	fmt.Printf("Signing time: %v\n", t1.Sub(t0))
+
+	partcom, err := merklearray.Build(PartCommit{parts})
+	require.NoError(t, err)
+
+	b, err := MkBuilder(param, parts, partcom)
+	require.NoError(t, err)
+
+	// XXX for skew, this takes the highest signers first
+	var sigWeight uint64
+	t2 := time.Now()
+	for i := 0; i < npart && sigWeight < signedWeight; i++ {
+		err = b.Add(uint64(i), sigs[i], true)
+		require.NoError(t, err)
+		sigWeight += parts[i].Weight
+	}
+	t3 := time.Now()
+	fmt.Printf("Add time: %v\n", t3.Sub(t2))
+
+	t4 := time.Now()
+	cert, err := b.Build()
+	require.NoError(t, err)
+	t5 := time.Now()
+	fmt.Printf("Build time: %v\n", t5.Sub(t4))
+
+	verif := MkVerifier(param, partcom.Root())
+	err = verif.Verify(cert)
+	require.NoError(t, err)
+}
