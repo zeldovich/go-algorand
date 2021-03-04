@@ -441,18 +441,21 @@ func TestPaperFlow(t *testing.T) {
 
 	// XXX for skew, this takes the highest signers first
 	var sigWeight uint64
+	t3 := time.Now()
 	for i := 0; i < npart && sigWeight < signedWeight; i++ {
-		err = b.Add(uint64(i), sigs[i], false)
+		err = b.Add(uint64(i), sigs[i], true)
 		require.NoError(t, err)
 		sigWeight += parts[i].Weight
 	}
+	t4 := time.Now()
 
 	cert, err := b.Build()
 	require.NoError(t, err)
-	t3 := time.Now()
-	fmt.Printf("Cert build time: %v\n", t3.Sub(t2))
+	t5 := time.Now()
+	fmt.Printf("Cert build time: %v\n", t5.Sub(t2))
+	fmt.Printf("Sig verify time: %v\n", t4.Sub(t3))
 
-	t4 := time.Now()
+	t6 := time.Now()
 	sigWeight = 0
 	naiveCert := make(map[uint64]crypto.Signature)
 	for i := 0; i < npart && sigWeight < provenWeight; i++ {
@@ -461,8 +464,8 @@ func TestPaperFlow(t *testing.T) {
 		sigWeight += parts[i].Weight
 		naiveCert[uint64(i)] = sigs[i]
 	}
-	t5 := time.Now()
-	fmt.Printf("Naive build time: %v\n", t5.Sub(t4))
+	t7 := time.Now()
+	fmt.Printf("Naive build time: %v\n", t7.Sub(t6))
 	fmt.Printf("Naive cert size: %d bytes\n", len(protocol.EncodeReflect(naiveCert)))
 
 	verif := MkVerifier(param, partcom.Root())
