@@ -231,6 +231,11 @@ func (b *Builder) Build() (*Cert, error) {
 			continue
 		}
 
+		// Check signature
+		if !b.participants[pos].PK.Verify(b.Msg, b.sigs[pos].sigslotCommit.Sig) {
+			return nil, fmt.Errorf("signature %d does not verify", pos)
+		}
+
 		// Generate the reveal for pos
 		c.Reveals[pos] = Reveal{
 			SigSlot: b.sigs[pos].sigslotCommit,
