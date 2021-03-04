@@ -17,7 +17,6 @@
 package merklearray
 
 import (
-	"runtime"
 	"sync"
 	"sync/atomic"
 )
@@ -52,7 +51,7 @@ type workerState struct {
 
 func newWorkerState(max uint64) *workerState {
 	var ws workerState
-	ws.nworkers = runtime.NumCPU()
+	ws.nworkers = 1
 	ws.maxidx = max
 
 	ws.starting = make(chan struct{}, 1)
