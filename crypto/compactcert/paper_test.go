@@ -405,15 +405,18 @@ func TestPaperFlow(t *testing.T) {
 		SecKQ:        128,
 	}
 
-	// Share the key; we allow the same vote key to appear in multiple accounts..
-	var seed crypto.Seed
-	crypto.RandBytes(seed[:])
-	key := crypto.GenerateSignatureSecrets(seed)
+	var keys []*crypto.SignatureSecrets
+	for i := 0; i < npart; i++ {
+		var seed crypto.Seed
+		crypto.RandBytes(seed[:])
+		key := crypto.GenerateSignatureSecrets(seed)
+		keys = append(keys, key)
+	}
 
 	var parts []Participant
 	for i := 0; i < npart; i++ {
 		part := Participant{
-			PK:     key.SignatureVerifier,
+			PK:     keys[i].SignatureVerifier,
 			Weight: partWeights[i],
 		}
 
@@ -423,7 +426,7 @@ func TestPaperFlow(t *testing.T) {
 	var sigs []crypto.Signature
 	t0 := time.Now()
 	for i := 0; i < npart; i++ {
-		sig := key.Sign(param.Msg)
+		sig := keys[i].Sign(param.Msg)
 		sigs = append(sigs, sig)
 	}
 	t1 := time.Now()
