@@ -93,7 +93,7 @@ type Reveal struct {
 }
 
 // maxReveals is a bound on allocation and on numReveals to limit log computation
-const maxReveals = 1024
+const maxReveals = 8192
 const maxProofDigests = 20 * maxReveals
 
 // Cert represents a compact certificate.

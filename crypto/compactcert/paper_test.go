@@ -261,7 +261,7 @@ func paperVerifyTime(t *testing.T, npart int, provenWeightPct int, signedWeightP
 	verif := MkVerifier(param, partcom.Root())
 
 	t0 := time.Now()
-	niter := 10
+	niter := 100
 	for i := 0; i < niter; i++ {
 		err = verif.Verify(cert)
 		require.NoError(t, err)
@@ -309,20 +309,38 @@ func TestPaperCertSizes(t *testing.T) {
 	csv := csv.NewWriter(f)
 	defer csv.Flush()
 
-	npart := 1000 * 1000
 	provenWeightPct := 50
 	mulpower := 0
 
-	csv.Write([]string{"signedWeight", "skew", "certBytes", "certReveals"})
+	csv.Write([]string{"signedWeight", "provenWeight", "skew", "certBytes", "certReveals", "npart"})
 
-	for sigpct := 55; sigpct <= 100; sigpct += 5 {
-		sz, nr := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
-		csv.Write([]string{
-			fmt.Sprintf("%d", sigpct),
-			fmt.Sprintf("%d", mulpower),
-			fmt.Sprintf("%d", sz),
-			fmt.Sprintf("%d", nr),
-		})
+	for _, npart := range([]int{1000*1000, 10*1000, 100}) {
+		for sigpct := provenWeightPct + 5; sigpct <= 100; sigpct += 5 {
+			sz, nr := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
+			csv.Write([]string{
+				fmt.Sprintf("%d", sigpct),
+				fmt.Sprintf("%d", provenWeightPct),
+				fmt.Sprintf("%d", mulpower),
+				fmt.Sprintf("%d", sz),
+				fmt.Sprintf("%d", nr),
+				fmt.Sprintf("%d", npart),
+			})
+		}
+	}
+
+	for _, provenWeightPct := range([]int{10, 30, 70}) {
+		npart := 1000*1000
+		for sigpct := provenWeightPct + 5; sigpct <= 100; sigpct += 5 {
+			sz, nr := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
+			csv.Write([]string{
+				fmt.Sprintf("%d", sigpct),
+				fmt.Sprintf("%d", provenWeightPct),
+				fmt.Sprintf("%d", mulpower),
+				fmt.Sprintf("%d", sz),
+				fmt.Sprintf("%d", nr),
+				fmt.Sprintf("%d", npart),
+			})
+		}
 	}
 }
 
@@ -359,19 +377,28 @@ func TestPaperVerifyTime(t *testing.T) {
 	csv := csv.NewWriter(f)
 	defer csv.Flush()
 
-	npart := 1000 * 1000
 	provenWeightPct := 50
 	mulpower := 0
 
-	csv.Write([]string{"signedWeight", "verifyTime"})
+	csv.Write([]string{"signedWeight", "npart", "verifyTime"})
 
-	for sigpct := 55; sigpct <= 100; sigpct += 5 {
-		t := medianVerifyTime(t, npart, provenWeightPct, sigpct, mulpower)
-		csv.Write([]string{
-			fmt.Sprintf("%d", sigpct),
-			fmt.Sprintf("%d", t.Nanoseconds()),
-		})
+	for _, npart := range([]int{1000*1000, 10*1000, 100}) {
+		for sigpct := 55; sigpct <= 100; sigpct += 5 {
+			t := medianVerifyTime(t, npart, provenWeightPct, sigpct, mulpower)
+			csv.Write([]string{
+				fmt.Sprintf("%d", sigpct),
+				fmt.Sprintf("%d", npart),
+				fmt.Sprintf("%d", t.Nanoseconds()),
+			})
+		}
 	}
+}
+
+type NaiveCertEntry struct {
+	_struct struct{} `codec:",omitempty,omitemptyarray"`
+
+	PK  crypto.PublicKey `codec:"p"`
+	Sig crypto.Signature `codec:"s"`
 }
 
 func TestPaperFlow(t *testing.T) {
@@ -457,16 +484,45 @@ func TestPaperFlow(t *testing.T) {
 
 	t6 := time.Now()
 	sigWeight = 0
-	naiveCert := make(map[uint64]crypto.Signature)
+	naiveCert := make(map[uint64]NaiveCertEntry)
 	for i := 0; i < npart && sigWeight < provenWeight; i++ {
 		ok := parts[i].PK.Verify(param.Msg, sigs[i])
 		require.True(t, ok)
 		sigWeight += parts[i].Weight
-		naiveCert[uint64(i)] = sigs[i]
+		naiveCert[uint64(i)] = NaiveCertEntry{
+			PK:  parts[i].PK,
+			Sig: sigs[i],
+		}
 	}
 	t7 := time.Now()
 	fmt.Printf("Naive build time: %v\n", t7.Sub(t6))
 	fmt.Printf("Naive cert size: %d bytes\n", len(protocol.EncodeReflect(naiveCert)))
+
+	sigWeight = 0
+	naiveCert = make(map[uint64]NaiveCertEntry)
+	for i := 0; i < npart && sigWeight < provenWeight/100; i++ {
+		ok := parts[i].PK.Verify(param.Msg, sigs[i])
+		require.True(t, ok)
+		sigWeight += parts[i].Weight
+		naiveCert[uint64(i)] = NaiveCertEntry{
+			PK:  parts[i].PK,
+			Sig: sigs[i],
+		}
+	}
+	fmt.Printf("10K naive cert size: %d bytes\n", len(protocol.EncodeReflect(naiveCert)))
+
+	sigWeight = 0
+	naiveCert = make(map[uint64]NaiveCertEntry)
+	for i := 0; i < npart && sigWeight < provenWeight/10000; i++ {
+		ok := parts[i].PK.Verify(param.Msg, sigs[i])
+		require.True(t, ok)
+		sigWeight += parts[i].Weight
+		naiveCert[uint64(i)] = NaiveCertEntry{
+			PK:  parts[i].PK,
+			Sig: sigs[i],
+		}
+	}
+	fmt.Printf("100 naive cert size: %d bytes\n", len(protocol.EncodeReflect(naiveCert)))
 
 	verif := MkVerifier(param, partcom.Root())
 	err = verif.Verify(cert)
