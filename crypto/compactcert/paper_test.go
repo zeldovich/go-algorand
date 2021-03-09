@@ -101,7 +101,7 @@ func TestPaperCertSizeBreakdown(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func paperCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) (int, int) {
+func paperCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) (int, int, int) {
 	mul := 1.0 - math.Pow(0.1, float64(mulpower))
 	if mulpower == 0 { // Special case, not continuous..
 		mul = 1.0
@@ -165,11 +165,16 @@ func paperCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct
 	b, err := MkBuilder(param, parts, partcom)
 	require.NoError(t, err)
 
-	// XXX for skew, this takes the highest signers first
+	// XXX for skew, this takes the highest signers first.
+	// But for the skew graph we anyway have signedWeight=100%.
 	var sigWeight uint64
+	var naiveSigCount int
 	for i := 0; i < npart && sigWeight < signedWeight; i++ {
 		err = b.Add(uint64(i), sigs[i], false)
 		require.NoError(t, err)
+		if sigWeight < provenWeight {
+			naiveSigCount += 1
+		}
 		sigWeight += parts[i].Weight
 	}
 
@@ -180,7 +185,7 @@ func paperCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct
 	err = verif.Verify(cert)
 	require.NoError(t, err)
 
-	return len(protocol.Encode(cert)), len(cert.Reveals)
+	return len(protocol.Encode(cert)), len(cert.Reveals), naiveSigCount
 }
 
 func paperVerifyTime(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) time.Duration {
@@ -281,15 +286,17 @@ func medianDuration(elems []time.Duration) time.Duration {
 	return elems[len(elems)/2]
 }
 
-func medianCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) (int, int) {
+func medianCertSize(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) (int, int, int) {
 	var reveals []int
 	var sizes []int
+	var naiveSigCounts []int
 	for i := 0; i < 3; i++ {
-		sz, nr := paperCertSize(t, npart, provenWeightPct, signedWeightPct, mulpower)
+		sz, nr, naiveSigCount := paperCertSize(t, npart, provenWeightPct, signedWeightPct, mulpower)
 		sizes = append(sizes, sz)
 		reveals = append(reveals, nr)
+		naiveSigCounts = append(naiveSigCounts, naiveSigCount)
 	}
-	return median(sizes), median(reveals)
+	return median(sizes), median(reveals), median(naiveSigCounts)
 }
 
 func medianVerifyTime(t *testing.T, npart int, provenWeightPct int, signedWeightPct int, mulpower int) time.Duration {
@@ -316,7 +323,7 @@ func TestPaperCertSizes(t *testing.T) {
 
 	for _, npart := range([]int{1000*1000, 10*1000, 100}) {
 		for sigpct := provenWeightPct + 5; sigpct <= 100; sigpct += 5 {
-			sz, nr := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
+			sz, nr, _ := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
 			csv.Write([]string{
 				fmt.Sprintf("%d", sigpct),
 				fmt.Sprintf("%d", provenWeightPct),
@@ -331,7 +338,7 @@ func TestPaperCertSizes(t *testing.T) {
 	for _, provenWeightPct := range([]int{10, 30, 70}) {
 		npart := 1000*1000
 		for sigpct := provenWeightPct + 5; sigpct <= 100; sigpct += 5 {
-			sz, nr := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
+			sz, nr, _ := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
 			csv.Write([]string{
 				fmt.Sprintf("%d", sigpct),
 				fmt.Sprintf("%d", provenWeightPct),
@@ -356,15 +363,16 @@ func TestPaperCertSizeSkew(t *testing.T) {
 	provenWeightPct := 50
 	sigpct := 100
 
-	csv.Write([]string{"signedWeight", "skew", "certBytes", "certReveals"})
+	csv.Write([]string{"signedWeight", "skew", "certBytes", "certReveals", "naiveSigCount"})
 
 	for mulpower := 1; mulpower < 10; mulpower++ {
-		sz, nr := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
+		sz, nr, naiveSigCount := medianCertSize(t, npart, provenWeightPct, sigpct, mulpower)
 		csv.Write([]string{
 			fmt.Sprintf("%d", sigpct),
 			fmt.Sprintf("%d", mulpower),
 			fmt.Sprintf("%d", sz),
 			fmt.Sprintf("%d", nr),
+			fmt.Sprintf("%d", naiveSigCount),
 		})
 	}
 }
