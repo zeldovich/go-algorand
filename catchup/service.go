@@ -86,6 +86,8 @@ type Service struct {
 	deadlineTimeout     time.Duration
 	blockValidationPool execpool.BacklogPool
 
+	haveUnsupported chan struct{}
+
 	// suspendForCatchpointWriting defines whether we've run into a state where the ledger is currently busy writing the
 	// catchpoint file. If so, we want to suspend the catchup process until the catchpoint file writing is complete,
 	// and resume from there without stopping the catchup timer.
@@ -134,6 +136,7 @@ func MakeService(log logging.Logger, config config.Local, net network.GossipNode
 
 // Start the catchup service
 func (s *Service) Start() {
+	s.haveUnsupported = make(chan struct{})
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	atomic.StoreUint32(&s.initialSyncNotified, 0)
 	s.InitialSyncDone = make(chan struct{})
@@ -511,6 +514,12 @@ func (s *Service) pipelinedFetch(seedLookback uint64) {
 // happens.
 func (s *Service) unsupportedRoundMonitor() {
 	defer s.workers.Done()
+	select {
+	case <-s.ctx.Done():
+		return
+	case <-s.haveUnsupported:
+	}
+
 	for {
 		nextRound := s.ledger.NextRound()
 		if s.roundIsNotSupported(nextRound) {
@@ -749,6 +758,10 @@ func (s *Service) roundIsNotSupported(nextRound basics.Round) bool {
 	}
 
 	s.log.Infof("Catchup Service: round %d is not approved, requires upgrading to unsupported %s in round %d. Service will stop once the last supported round is added to the ledger.", nextRound, bh.NextProtocol, bh.NextProtocolSwitchOn)
+	select {
+	case s.haveUnsupported <- struct{}{}:
+	default:
+	}
 	return true
 }
 
